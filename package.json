@@ -1,0 +1,14 @@
+{
+  "name": "video-qrcode",
+  "version": "1.0.0",
+  "description": "视频上传+二维码生成的Web应用",
+  "scripts": {
+    "dev": "node server/index.js"
+  },
+  "dependencies": {
+    "uuid": "^9.0.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}
