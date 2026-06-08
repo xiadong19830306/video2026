@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>视频上传 · 生成二维码</title>
+  <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.1.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="./config.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -40,7 +42,6 @@
       margin-bottom: 32px;
     }
 
-    /* 拖拽上传区域 */
     .drop-zone {
       border: 2px dashed #d0d0d0;
       border-radius: 12px;
@@ -65,10 +66,7 @@
       height: 100%;
     }
 
-    .drop-icon {
-      font-size: 40px;
-      margin-bottom: 12px;
-    }
+    .drop-icon { font-size: 40px; margin-bottom: 12px; }
 
     .drop-title {
       font-size: 16px;
@@ -77,12 +75,8 @@
       margin-bottom: 6px;
     }
 
-    .drop-hint {
-      font-size: 13px;
-      color: #aaa;
-    }
+    .drop-hint { font-size: 13px; color: #aaa; }
 
-    /* 已选文件信息 */
     .file-info {
       display: none;
       margin-top: 16px;
@@ -96,9 +90,7 @@
     }
 
     .file-info.show { display: flex; }
-
     .file-icon { font-size: 20px; }
-
     .file-meta { flex: 1; overflow: hidden; }
 
     .file-name {
@@ -111,7 +103,6 @@
 
     .file-size { color: #999; font-size: 12px; margin-top: 2px; }
 
-    /* 上传按钮 */
     .btn-upload {
       display: block;
       width: 100%;
@@ -130,7 +121,6 @@
     .btn-upload:hover { background: #005cc5; }
     .btn-upload:disabled { background: #b0c8f0; cursor: not-allowed; }
 
-    /* 进度条 */
     .progress-wrap {
       display: none;
       margin-top: 20px;
@@ -161,7 +151,6 @@
       width: 0%;
     }
 
-    /* 结果区域 */
     .result {
       display: none;
       margin-top: 28px;
@@ -221,7 +210,6 @@
       word-break: break-all;
     }
 
-    /* 状态消息 */
     .status-msg {
       display: none;
       margin-top: 14px;
@@ -297,6 +285,19 @@
     let selectedFile = null;
     let qrInstance = null;
 
+    // 初始化 OSS 客户端
+    const config = window.OSS_CONFIG;
+    const ossClient = new OSS({
+      region: config.region,
+      accessKeyId: config.accessKeyId,
+      accessKeySecret: config.accessKeySecret,
+      bucket: config.bucket,
+      secure: true
+    });
+
+    // 当前页面地址，用于生成播放链接
+    const baseUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
+
     function formatSize(bytes) {
       if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
       return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
@@ -309,6 +310,10 @@
 
     function hideStatus() {
       statusMsg.className = 'status-msg';
+    }
+
+    function genId() {
+      return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     }
 
     function onFileSelected(file) {
@@ -359,61 +364,31 @@
       resultEl.classList.remove('show');
 
       try {
-        // 1. 获取上传参数
         const ext = selectedFile.name.split('.').pop() || 'mp4';
-        const paramsRes = await fetch(`/api/upload-params?ext=${ext}`);
-        if (!paramsRes.ok) throw new Error('获取上传参数失败');
-        const params = await paramsRes.json();
+        const key = 'videos/' + genId() + '.' + ext;
 
-        // 2. 使用 FormData 直传 OSS
-        const formData = new FormData();
-        formData.append('key', params.key);
-        formData.append('policy', params.policy);
-        formData.append('OSSAccessKeyId', params.OSSAccessKeyId);
-        formData.append('signature', params.signature);
-        formData.append('success_action_status', '200');
-        formData.append('file', selectedFile);
-
-        await uploadWithProgress(params.host, formData, (pct) => {
-          progressBar.style.width = pct + '%';
-          progressPct.textContent = pct + '%';
+        // 使用 OSS SDK 直接上传，带进度回调
+        await ossClient.put(key, selectedFile, {
+          progress: (pctFloat) => {
+            const pct = Math.round(pctFloat * 100);
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = pct + '%';
+          },
+          mime: selectedFile.type
         });
 
-        // 3. 生成二维码
-        showResult(params.playUrl);
+        // 生成播放链接
+        const playUrl = baseUrl + '/play.html?v=' + encodeURIComponent(config.publicDomain + '/' + key);
+
+        showResult(playUrl);
 
       } catch (err) {
-        showStatus('上传失败：' + err.message);
+        console.error(err);
+        showStatus('上传失败：' + (err.message || '未知错误'));
         btnUpload.disabled = false;
         btnUpload.textContent = '重新上传';
         progressWrap.classList.remove('show');
       }
-    }
-
-    function uploadWithProgress(url, formData, onProgress) {
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', url);
-
-        xhr.upload.addEventListener('progress', e => {
-          if (e.lengthComputable) {
-            onProgress(Math.round(e.loaded / e.total * 100));
-          }
-        });
-
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            reject(new Error(`OSS 返回 ${xhr.status}：${xhr.responseText.slice(0, 200)}`));
-          }
-        });
-
-        xhr.addEventListener('error', () => reject(new Error('网络错误，上传失败')));
-        xhr.addEventListener('abort', () => reject(new Error('上传已取消')));
-
-        xhr.send(formData);
-      });
     }
 
     function showResult(playUrl) {
@@ -421,7 +396,6 @@
       progressPct.textContent = '100%';
       btnUpload.textContent = '上传成功';
 
-      // 清除旧二维码
       const qrEl = document.getElementById('qrcode');
       qrEl.innerHTML = '';
 
@@ -438,11 +412,9 @@
       resultEl.classList.add('show');
       showStatus('上传成功！二维码已生成', 'success');
 
-      // 滚动到结果
       setTimeout(() => resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
     }
 
-    // 下载二维码
     document.getElementById('btnDownloadQR').addEventListener('click', () => {
       const img = document.querySelector('#qrcode img');
       if (!img) return;
@@ -452,7 +424,6 @@
       a.click();
     });
 
-    // 复制链接
     document.getElementById('btnCopyLink').addEventListener('click', async () => {
       const link = playLinkEl.textContent;
       if (!link) return;
@@ -464,7 +435,6 @@
       }
     });
 
-    // 继续上传另一个
     document.getElementById('btnUploadAnother').addEventListener('click', () => {
       selectedFile = null;
       fileInfo.classList.remove('show');
