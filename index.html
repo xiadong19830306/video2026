@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>视频上传 · 生成二维码</title>
+  <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="./config.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f7;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 520px;
+      box-shadow: 0 2px 20px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: #888;
+      margin-bottom: 32px;
+    }
+
+    .drop-zone {
+      border: 2px dashed #d0d0d0;
+      border-radius: 12px;
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: #0070f3;
+      background: #f0f7ff;
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-icon { font-size: 40px; margin-bottom: 12px; }
+
+    .drop-title {
+      font-size: 16px;
+      font-weight: 500;
+      color: #333;
+      margin-bottom: 6px;
+    }
+
+    .drop-hint { font-size: 13px; color: #aaa; }
+
+    .file-info {
+      display: none;
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: #f8f8f8;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #555;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .file-info.show { display: flex; }
+    .file-icon { font-size: 20px; }
+    .file-meta { flex: 1; overflow: hidden; }
+
+    .file-name {
+      font-weight: 500;
+      color: #222;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-size { color: #999; font-size: 12px; margin-top: 2px; }
+
+    .btn-upload {
+      display: block;
+      width: 100%;
+      margin-top: 20px;
+      padding: 14px;
+      background: #0070f3;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 500;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-upload:hover { background: #005cc5; }
+    .btn-upload:disabled { background: #b0c8f0; cursor: not-allowed; }
+
+    .progress-wrap {
+      display: none;
+      margin-top: 20px;
+    }
+
+    .progress-wrap.show { display: block; }
+
+    .progress-label {
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .progress-bar-bg {
+      height: 8px;
+      background: #eee;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: #0070f3;
+      border-radius: 4px;
+      transition: width 0.3s;
+      width: 0%;
+    }
+
+    .result {
+      display: none;
+      margin-top: 28px;
+      text-align: center;
+    }
+
+    .result.show { display: block; }
+
+    .result-title {
+      font-size: 15px;
+      font-weight: 500;
+      color: #222;
+      margin-bottom: 16px;
+    }
+
+    #qrcode {
+      display: inline-block;
+      padding: 16px;
+      background: #fff;
+      border: 1px solid #e8e8e8;
+      border-radius: 12px;
+    }
+
+    .result-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      justify-content: center;
+    }
+
+    .btn-action {
+      padding: 9px 20px;
+      font-size: 13px;
+      border-radius: 8px;
+      border: 1px solid #d0d0d0;
+      background: #fff;
+      cursor: pointer;
+      color: #333;
+      transition: background 0.15s;
+    }
+
+    .btn-action:hover { background: #f5f5f5; }
+
+    .btn-action.primary {
+      background: #0070f3;
+      color: #fff;
+      border-color: #0070f3;
+    }
+
+    .btn-action.primary:hover { background: #005cc5; }
+
+    .play-link {
+      display: block;
+      margin-top: 14px;
+      font-size: 12px;
+      color: #aaa;
+      word-break: break-all;
+    }
+
+    .status-msg {
+      display: none;
+      margin-top: 14px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .status-msg.error { display: block; background: #fff0f0; color: #c00; }
+    .status-msg.success { display: block; background: #f0fff4; color: #1a8a3a; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>上传视频</h1>
+    <p class="subtitle">上传后自动生成二维码，扫码即可播放</p>
+
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept="video/*">
+      <div class="drop-icon">🎬</div>
+      <div class="drop-title">点击或拖拽视频文件到这里</div>
+      <div class="drop-hint">支持 MP4、MOV、AVI 等格式，建议不超过 500MB</div>
+    </div>
+
+    <div class="file-info" id="fileInfo">
+      <span class="file-icon">📹</span>
+      <div class="file-meta">
+        <div class="file-name" id="fileName">—</div>
+        <div class="file-size" id="fileSize">—</div>
+      </div>
+    </div>
+
+    <button class="btn-upload" id="btnUpload" disabled>选择视频后开始上传</button>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label">
+        <span>上传中...</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressBar"></div>
+      </div>
+    </div>
+
+    <div class="status-msg" id="statusMsg"></div>
+
+    <div class="result" id="result">
+      <div class="result-title">上传成功！扫描下方二维码播放视频</div>
+      <div id="qrcode"></div>
+      <div class="result-actions">
+        <button class="btn-action primary" id="btnDownloadQR">下载二维码</button>
+        <button class="btn-action" id="btnCopyLink">复制链接</button>
+        <button class="btn-action" id="btnUploadAnother">继续上传</button>
+      </div>
+      <span class="play-link" id="playLink"></span>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const dropZone = document.getElementById('dropZone');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const btnUpload = document.getElementById('btnUpload');
+    const progressWrap = document.getElementById('progressWrap');
+    const progressBar = document.getElementById('progressBar');
+    const progressPct = document.getElementById('progressPct');
+    const statusMsg = document.getElementById('statusMsg');
+    const resultEl = document.getElementById('result');
+    const playLinkEl = document.getElementById('playLink');
+
+    let selectedFile = null;
+    let qrInstance = null;
+
+    // 初始化 OSS 客户端
+    const config = window.OSS_CONFIG;
+    const ossClient = new OSS({
+      region: config.region,
+      accessKeyId: config.accessKeyId,
+      accessKeySecret: config.accessKeySecret,
+      bucket: config.bucket,
+      secure: true
+    });
+
+    // 当前页面地址，用于生成播放链接
+    const baseUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
+
+    function formatSize(bytes) {
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function showStatus(msg, type = 'error') {
+      statusMsg.textContent = msg;
+      statusMsg.className = 'status-msg ' + type;
+    }
+
+    function hideStatus() {
+      statusMsg.className = 'status-msg';
+    }
+
+    function genId() {
+      return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    }
+
+    function onFileSelected(file) {
+      if (!file || !file.type.startsWith('video/')) {
+        showStatus('请选择视频文件（MP4、MOV 等格式）');
+        return;
+      }
+      selectedFile = file;
+      fileName.textContent = file.name;
+      fileSize.textContent = formatSize(file.size) + ' · ' + file.type;
+      fileInfo.classList.add('show');
+      btnUpload.disabled = false;
+      btnUpload.textContent = '开始上传';
+      hideStatus();
+      resultEl.classList.remove('show');
+    }
+
+    fileInput.addEventListener('change', e => {
+      if (e.target.files[0]) onFileSelected(e.target.files[0]);
+    });
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) onFileSelected(e.dataTransfer.files[0]);
+    });
+
+    btnUpload.addEventListener('click', startUpload);
+
+    async function startUpload() {
+      if (!selectedFile) return;
+
+      btnUpload.disabled = true;
+      btnUpload.textContent = '上传中...';
+      progressWrap.classList.add('show');
+      progressBar.style.width = '0%';
+      progressPct.textContent = '0%';
+      hideStatus();
+      resultEl.classList.remove('show');
+
+      try {
+        const ext = selectedFile.name.split('.').pop() || 'mp4';
+        const key = 'videos/' + genId() + '.' + ext;
+
+        // 使用 OSS SDK 直接上传，带进度回调
+        await ossClient.put(key, selectedFile, {
+          progress: (pctFloat) => {
+            const pct = Math.round(pctFloat * 100);
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = pct + '%';
+          },
+          mime: selectedFile.type
+        });
+
+        // 生成播放链接
+        const playUrl = baseUrl + '/play.html?v=' + encodeURIComponent(config.publicDomain + '/' + key);
+
+        showResult(playUrl);
+
+      } catch (err) {
+        console.error(err);
+        showStatus('上传失败：' + (err.message || '未知错误'));
+        btnUpload.disabled = false;
+        btnUpload.textContent = '重新上传';
+        progressWrap.classList.remove('show');
+      }
+    }
+
+    function showResult(playUrl) {
+      progressBar.style.width = '100%';
+      progressPct.textContent = '100%';
+      btnUpload.textContent = '上传成功';
+
+      const qrEl = document.getElementById('qrcode');
+      qrEl.innerHTML = '';
+
+      qrInstance = new QRCode(qrEl, {
+        text: playUrl,
+        width: 200,
+        height: 200,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+
+      playLinkEl.textContent = playUrl;
+      resultEl.classList.add('show');
+      showStatus('上传成功！二维码已生成', 'success');
+
+      setTimeout(() => resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
+    }
+
+    document.getElementById('btnDownloadQR').addEventListener('click', () => {
+      const img = document.querySelector('#qrcode img');
+      if (!img) return;
+      const a = document.createElement('a');
+      a.href = img.src;
+      a.download = 'video-qrcode.png';
+      a.click();
+    });
+
+    document.getElementById('btnCopyLink').addEventListener('click', async () => {
+      const link = playLinkEl.textContent;
+      if (!link) return;
+      try {
+        await navigator.clipboard.writeText(link);
+        showStatus('链接已复制到剪贴板', 'success');
+      } catch {
+        showStatus('复制失败，请手动复制下方链接');
+      }
+    });
+
+    document.getElementById('btnUploadAnother').addEventListener('click', () => {
+      selectedFile = null;
+      fileInfo.classList.remove('show');
+      fileInput.value = '';
+      btnUpload.disabled = true;
+      btnUpload.textContent = '选择视频后开始上传';
+      progressWrap.classList.remove('show');
+      resultEl.classList.remove('show');
+      hideStatus();
+      document.getElementById('qrcode').innerHTML = '';
+    });
+  </script>
+</body>
+</html>
